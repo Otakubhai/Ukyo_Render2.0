@@ -1,5 +1,6 @@
-pyrogram==2.0.30
-tgcrypto==1.2.5
-aiohttp==3.8.1
-beautifulsoup4==4.11.1
-lxml==4.9.1
+pyrogram
+tgcrypto
+aiohttp
+beautifulsoup4
+python-dotenv
+lxml
