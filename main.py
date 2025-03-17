@@ -8,19 +8,16 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.enums import ParseMode
 from dotenv import load_dotenv
 
-# Load environment variables from .env file if it exists
-load_dotenv()
-
 # Load environment variables
+load_dotenv()
 API_ID = int(os.getenv("API_ID", "0"))
 API_HASH = os.getenv("API_HASH", "")
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 ALLOWED_USERS = os.getenv("ALLOWED_USERS", "").split(",")
 
-# Initialize Pyrogram Bot
 bot = Client("anime_multporn_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-# Quality and Format Selection
+# User session storage
 QUALITY_SELECTION = {}
 FORMAT_SELECTION = {}
 AWAITING_MULTPORN_LINK = {}
@@ -67,13 +64,11 @@ async def download_images_from_multporn(url):
                 return None
             
             html_content = await response.text()
-            
-    soup = BeautifulSoup(html_content, 'lxml')
     
-    # Find all image elements in the gallery
+    soup = BeautifulSoup(html_content, 'lxml')
     image_elements = soup.select('.jb-image img')
     image_urls = []
-    
+
     for img in image_elements:
         if 'src' in img.attrs:
             image_url = img['src']
@@ -91,7 +86,7 @@ async def start(client, message):
         await message.reply_text("You are not authorized to use this bot.")
         return
     
-    await message.reply_text("Welcome! Use /anime to search for anime information or /get_doujin to download images from Multporn.")
+    await message.reply_text("Welcome! Use /anime to search for anime info or /get_doujin to download images from Multporn.")
 
 @bot.on_message(filters.command("get_doujin"))
 async def get_doujin(client, message):
@@ -119,7 +114,6 @@ async def anime(client, message):
 async def handle_text(client, message):
     chat_id = message.chat.id
     
-    # Check if awaiting multporn link
     if chat_id in AWAITING_MULTPORN_LINK and AWAITING_MULTPORN_LINK[chat_id]:
         if re.match(r'https?://multporn\.net/\S+', message.text):
             await process_multporn_link(client, message)
@@ -129,7 +123,6 @@ async def handle_text(client, message):
             await message.reply_text("Invalid Multporn link. Please send a valid link from multporn.net")
             return
     
-    # Check if expecting anime name
     if chat_id in QUALITY_SELECTION and QUALITY_SELECTION[chat_id] is None:
         anime_name = message.text
         QUALITY_SELECTION[chat_id] = anime_name
@@ -154,40 +147,26 @@ async def process_multporn_link(client, message):
         await message.reply_text("No images found or invalid URL.")
         return
     
-    # Send status update
-    status_message = await message.reply_text(f"Found {len(image_urls)} images. Starting upload...")
-    
-    # Upload images
     for i, img_url in enumerate(image_urls):
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(img_url) as response:
                     if response.status == 200:
                         content = await response.read()
-                        
-                        # Update status occasionally
-                        if i % 5 == 0 or i == len(image_urls) - 1:
-                            await status_message.edit_text(f"Uploading image {i+1}/{len(image_urls)}...")
-                        
-                        # Send as document to preserve quality
                         await client.send_document(
                             chat_id=message.chat.id,
                             document=content,
                             file_name=f"image_{i+1}.jpg",
                             caption=f"Image {i+1}/{len(image_urls)}"
                         )
-                        # Add a small delay to avoid hitting rate limits
                         await asyncio.sleep(1)
         except Exception as e:
             await message.reply_text(f"Error uploading image {i+1}: {str(e)}")
-    
-    await status_message.edit_text(f"Upload complete! All {len(image_urls)} images have been sent.")
 
 @bot.on_callback_query()
 async def button_callback(client, callback_query):
-    user_id = callback_query.from_user.id
-    data = callback_query.data
     chat_id = callback_query.message.chat.id
+    data = callback_query.data
 
     if data in ["480p", "720p", "1080p", "720p_1080p", "all_qualities"]:
         FORMAT_SELECTION[chat_id] = data
@@ -200,10 +179,8 @@ async def button_callback(client, callback_query):
     elif data in ["otaku", "hanime"]:
         anime_name = QUALITY_SELECTION.get(chat_id)
         quality = FORMAT_SELECTION.get(chat_id)
-        
-        # Clear the selections
         QUALITY_SELECTION[chat_id] = None
-        
+
         anime = await fetch_anime_info(anime_name)
 
         if not anime:
@@ -212,41 +189,17 @@ async def button_callback(client, callback_query):
 
         anime_id = anime["id"]
         image_url = f"https://img.anili.st/media/{anime_id}"
-        
         title = anime["title"]["english"] or anime["title"]["romaji"]
-        genres = anime["genres"]
-        genres_text = ", ".join(genres)
+        genres_text = ", ".join(anime["genres"])
         episodes = anime["episodes"] or "N/A"
 
         if data == "hanime":
-            message = f"<b>💦 {title}\n" \
-                    f"╭──────────────────────\n" \
-                    f"├ 📺 Episode : {episodes}\n" \
-                    f"├ 💾 Quality : {quality}\n" \
-                    f"├ 🎭 Genres: {genres_text}\n" \
-                    f"├ 🔊 Audio track : Sub\n" \
-                    f"├ #Censored\n" \
-                    f"├ #Recommendation +++++++\n" \
-                    f"╰──────────────────────</b>"
-        else:  # otaku
-            genre_tags = " ".join([f"#{g}" for g in genres])
-            message = f"<b>🧡  {title}\n\n" \
-                    f"🎭 : {genres_text}\n" \
-                    f"🎨 : Extra Tags\n\n" \
-                    f"🔊 : Dual\n" \
-                    f"📡 : Season Completed\n" \
-                    f"🗓 : {episodes}\n" \
-                    f"💾 : {quality}\n" \
-                    f"✂️ : 60MB | 300MB | 1GB\n" \
-                    f"🔞 : PG-13\n\n" \
-                    f"📌 : {genre_tags}</b>"
+            message = f"<b>💦 {title}\n📺 Episode: {episodes}\n💾 Quality: {quality}\n🎭 Genres: {genres_text}\n🔊 Audio track: Sub\n#Censored\n#Recommendation +++++++</b>"
+        else:
+            genre_tags = " ".join([f"#{g}" for g in anime["genres"]])
+            message = f"<b>🧡 {title}\n🎭 {genres_text}\n🔊 Dual\n📡 Season Completed\n🗓 {episodes}\n💾 {quality}\n✂️ 60MB | 300MB | 1GB\n📌 {genre_tags}</b>"
 
-        await client.send_photo(
-            chat_id=chat_id,
-            photo=image_url,
-            caption=message,
-            parse_mode=ParseMode.HTML
-        )
+        await client.send_photo(chat_id=chat_id, photo=image_url, caption=message, parse_mode=ParseMode.HTML)
 
-print("Starting Bot...")
+print("Bot is running...")
 bot.run()
